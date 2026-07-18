@@ -56,30 +56,22 @@ in the z-order stack and blurs whatever is behind it.
 
 Get the latest `win2dist.exe` from the [Releases](../../releases) page.
 
-The single `.exe` bundles everything — Python runtime, native C++ overlay,
-acrylic engine. ~11 MB, portable.
+The single `.exe` bundles everything — native C++ tray app, acrylic overlay
+engine, and welcome demo. 493KB, portable.
 
 ## Build from Source
 
 ```bash
-# Prerequisites: Python 3.12+, MinGW-w64 (g++), CMake
+# Prerequisites: MinGW-w64 (g++ 13+), CMake 3.16+
 
-# Build native helpers
 cd native
 mkdir build && cd build
 cmake -G "MinGW Makefiles" ..
 cmake --build .
 
-# Run in dev mode
-cd ../..
-python main.py
-
-# Package with PyInstaller
-pip install pyinstaller
-pyinstaller --onefile --noconsole --name win2dist \
-  --add-data "acrylic_overlay.exe;." \
-  --add-data "welcome_demo.exe;." \
-  main.py
+# Output: build/win2dist.exe (~493KB)
+# Child exes (acrylic_overlay.exe, welcome_demo.exe) are embedded as
+# RCDATA resources and extracted to %TEMP% at runtime.
 ```
 
 ## Architecture
@@ -124,23 +116,48 @@ What we'd like to add in future releases:
 
 ## Acknowledgments
 
-This project builds on the ideas and code of these open-source projects:
+This project stands on two excellent open-source foundations:
 
-- **[DWMBlurGlass](https://github.com/Maplespe/DWMBlurGlass)** by **Maplespe**
-  — Pioneered the DWM injection technique for custom blur effects on Windows
-  10/11. We studied its MinHook-based interception of
-  `CRenderingTechnique::ExecuteBlur` and `CCustomBlur::BuildEffect`
-  extensively. The zero-flicker acrylic overlay approach in win2dist (Route
-  C) was developed as a non-injection alternative after encountering PDB
-  symbol incompatibility with certain Windows builds.
+### [DWMBlurGlass](https://github.com/Maplespe/DWMBlurGlass) by Maplespe
 
-- **[Window2Clear](https://github.com/Blinue/Window2Clear)** by **Blinue**
-  — A lightweight window transparency tool for Windows. Inspired our per-window
-  `SetLayeredWindowAttributes` approach (Route A) and the system-tray +
-  global-hotkey interaction model. Our project was originally named after
-  this one — renamed to *win2dist* to avoid confusion.
+DWMBlurGlass pioneered the technique of injecting a DLL into `dwm.exe` and
+using MinHook to intercept DWM's internal blur rendering functions
+(`CRenderingTechnique::ExecuteBlur`, `CCustomBlur::BuildEffect`, and
+`CD2DContext_FillEffect`). We used its source code to:
 
-Thank you to both authors for their excellent work.
+- **Understand DWM's blur pipeline** — how the desktop compositor renders
+  acrylic, blur, and mica effects, and which functions control blur radius
+- **Study the MinHook injection chain** — `DWMBlurGlassHost.dll` (renamed
+  EXE) → `DWMBlurGlassExt.dll` → `dwm.exe`, including the PDB symbol-based
+  function offset resolution via `MHostLoadProcOffsetList()`
+- **Build our diagnostic tool** (`window2clear/diagnose.py`) — checks every
+  link in the DWMBlurGlass injection pipeline
+- **Learn the IPC mechanism** — `WM_APP + 20` messages between host and DLL
+  via `MDWMBlurGlassHostNotify` / `MDWMBlurGlassExtNotify` message-only windows
+
+Route F (DWM Hook) in this project is a direct adaptation of DWMBlurGlass's
+approach. It failed on Windows 10 build 19045.6466 due to PDB symbol
+incompatibility, which motivated the development of our zero-injection
+Route C (Acrylic Overlay).
+
+### [Window2Clear](https://github.com/Blinue/Window2Clear) by Blinue
+
+The original Window2Clear is a lightweight C++ Win32 tool for per-window
+transparency control. We used its source to:
+
+- **Validate our transparency approach** — `SetLayeredWindowAttributes` with
+  `LWA_ALPHA` for real-time opacity control
+- **Study the system-tray + global-hotkey pattern** — `RegisterHotKey` in a
+  hidden message-only window with `Shell_NotifyIcon`
+- **Cross-reference API behavior** — how `WS_EX_LAYERED` interacts with
+  DWM compositor and `SetLayeredWindowAttributes` on Win10 vs Win7
+
+Our v1.x Python tray app (`window2clear/tray_app.py`) was directly inspired
+by its interaction model. The v2.0 C++ rewrite (`native/src/tray_app.cpp`)
+is a clean-room implementation of the same pattern, extended with acrylic
+overlay management, session save/restore, and resource embedding.
+
+Thank you to Maplespe and Blinue for their excellent, well-documented code.
 
 ## FAQ
 
