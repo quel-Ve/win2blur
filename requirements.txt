@@ -1,0 +1,2 @@
+# 12window2clear — 零外部依赖
+# tkinter is bundled with Python
