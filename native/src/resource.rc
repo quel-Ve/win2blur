@@ -1,0 +1,22 @@
+#include <windows.h>
+#include <commctrl.h>
+
+// Application icon (replace app.ico with your own)
+APP_ICON ICON "app.ico"
+
+// Embed child executables as binary resources
+101 RCDATA "acrylic_overlay.exe"
+102 RCDATA "welcome_demo.exe"
+
+200 DIALOGEX 0, 0, 300, 160
+STYLE WS_CAPTION | WS_SYSMENU | DS_CENTER
+CAPTION "win2dist - Settings"
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT "Transparency step (1-20%)", -1, 12, 12, 120, 12
+    CONTROL "", 101, "msctls_trackbar32", TBS_AUTOTICKS | WS_TABSTOP, 12, 28, 180, 20
+    LTEXT "5", 100, 200, 30, 30, 12
+    LTEXT "ALT+LEFT   more transparent\nALT+RIGHT  less transparent\nALT+UP     toggle on/off\nALT+DOWN   acrylic blur", 102, 12, 60, 200, 80
+    DEFPUSHBUTTON "Save", IDOK, 220, 20, 60, 24
+    PUSHBUTTON "Cancel", IDCANCEL, 220, 50, 60, 24
+END
