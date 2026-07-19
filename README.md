@@ -145,7 +145,7 @@ approach. It failed on Windows 10 build 19045.6466 due to PDB symbol
 incompatibility, which motivated the development of our zero-injection
 Route C (Acrylic Overlay).
 
-### [Window2Clear](https://github.com/Blinue/Window2Clear) by Blinue
+### [Window2Clear](https://github.com/iwill123/Window2Clear) by iwill123
 
 The original Window2Clear is a lightweight C++ Win32 tool for per-window
 transparency control. We used its source to:
@@ -188,5 +188,5 @@ MIT — see [LICENSE](LICENSE) for details.
 
 ---
 
-*win2dist was originally named "Window2Clear" — renamed to avoid confusion
+*win2dist was originally named "Window2Blur" — renamed to avoid confusion
 with the unrelated open-source project of the same name.*
