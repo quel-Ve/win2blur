@@ -77,18 +77,23 @@ cmake --build .
 ## Architecture
 
 ```
-12window2clear/
-├── main.py                  # Entry point → tray_app
-├── window2clear/
-│   ├── tray_app.py          # System tray + global hotkeys
-│   ├── blur_controller.py   # Programmatic blur API
-│   ├── frosted_glass.py     # Acrylic overlay launcher
-│   └── diagnose.py          # DWM pipeline diagnostic
 ├── native/src/
-│   ├── acrylic_overlay.cpp  # Zero-flicker acrylic window (C++ Win32)
-│   └── welcome_demo.cpp     # Startup welcome + effect demo
-└── dist/
-    └── win2dist.exe         # Release binary
+│   ├── tray_app.cpp          # C++ tray app (hotkeys, tray, settings)
+│   ├── acrylic_overlay.cpp   # Zero-flicker acrylic window
+│   ├── welcome_demo.cpp      # Startup demo with effect cycling
+│   ├── resource.rc           # Icons + embedded child exes
+│   └── app.ico               # Application icon
+├── win2dist/                 # Python helper modules
+│   ├── diagnose.py           # DWMBlurGlass pipeline diagnostic
+│   ├── blur_controller.py    # Programmatic blur API (reference)
+│   ├── tray_app.py           # Original Python tray app (reference)
+│   ├── frosted_glass.py      # Acrylic overlay launcher (reference)
+│   └── dist/                 # Distribution
+│       ├── win2dist.exe      # Production build (~1.1MB)
+│       ├── readme.md
+│       └── install.bat / uninstall.bat
+├── README.md
+└── .gitignore
 ```
 
 ### Routes (how we explored the problem space)
