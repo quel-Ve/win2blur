@@ -330,44 +330,98 @@ void on_hotkey(int id) {
     }
 }
 
-// ==================== Settings Dialog ====================
-INT_PTR CALLBACK SettingsDlg(HWND hDlg, UINT msg, WPARAM wp, LPARAM) {
+// ==================== Settings Window (programmatic, no resource dependency) ====================
+LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    static HWND hTrack = nullptr, hLabel = nullptr;
     static int* pStep = nullptr;
+
     switch (msg) {
-    case WM_INITDIALOG: {
-        pStep = (int*)GetWindowLongPtrW(hDlg, GWLP_USERDATA);
-        SetDlgItemInt(hDlg, 100, *pStep, FALSE);
-        SendDlgItemMessageW(hDlg, 101, TBM_SETRANGE, TRUE, MAKELONG(1, 20));
-        SendDlgItemMessageW(hDlg, 101, TBM_SETPOS, TRUE, *pStep);
-        wchar_t buf[64];
-        wsprintfW(buf, L"ALT+LEFT   more transparent\r\nALT+RIGHT  less transparent\r\nALT+UP     toggle on/off\r\nALT+DOWN   acrylic blur");
-        SetDlgItemTextW(hDlg, 102, buf);
-        return TRUE;
+    case WM_CREATE: {
+        CREATESTRUCTW* cs = (CREATESTRUCTW*)lp;
+        pStep = (int*)cs->lpCreateParams;
+        HINSTANCE hi = (HINSTANCE)GetWindowLongPtrW(hwnd, GWLP_HINSTANCE);
+
+        CreateWindowW(L"STATIC", L"Transparency step (1-20%)",
+            WS_CHILD | WS_VISIBLE, 12, 12, 200, 20, hwnd, nullptr, hi, nullptr);
+
+        hTrack = CreateWindowW(L"msctls_trackbar32", L"",
+            WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS | TBS_TOOLTIPS,
+            12, 32, 200, 28, hwnd, (HMENU)101, hi, nullptr);
+        SendMessageW(hTrack, TBM_SETRANGE, TRUE, MAKELONG(1, 20));
+        SendMessageW(hTrack, TBM_SETPOS, TRUE, *pStep);
+
+        hLabel = CreateWindowW(L"STATIC", L"",
+            WS_CHILD | WS_VISIBLE, 220, 34, 40, 20, hwnd, nullptr, hi, nullptr);
+        wchar_t buf[16]; wsprintfW(buf, L"%d", *pStep);
+        SetWindowTextW(hLabel, buf);
+
+        CreateWindowW(L"STATIC",
+            L"ALT+LEFT   more transparent\r\nALT+RIGHT  less transparent\r\nALT+UP     toggle on/off\r\nALT+DOWN   acrylic blur",
+            WS_CHILD | WS_VISIBLE, 12, 70, 240, 80, hwnd, nullptr, hi, nullptr);
+
+        CreateWindowW(L"BUTTON", L"Save",
+            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+            200, 24, 60, 24, hwnd, (HMENU)IDOK, hi, nullptr);
+        CreateWindowW(L"BUTTON", L"Cancel",
+            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+            200, 56, 60, 24, hwnd, (HMENU)IDCANCEL, hi, nullptr);
+        return 0;
     }
-    case WM_HSCROLL:
-        if (LOWORD(wp) == TB_THUMBPOSITION || LOWORD(wp) == TB_ENDTRACK) {
-            int v = (int)SendDlgItemMessageW(hDlg, 101, TBM_GETPOS, 0, 0);
-            SetDlgItemInt(hDlg, 100, v, FALSE);
-        }
-        return TRUE;
+    case WM_HSCROLL: {
+        int v = (int)SendMessageW(hTrack, TBM_GETPOS, 0, 0);
+        wchar_t buf[16]; wsprintfW(buf, L"%d", v);
+        SetWindowTextW(hLabel, buf);
+        return 0;
+    }
     case WM_COMMAND:
         if (LOWORD(wp) == IDOK) {
-            int v = GetDlgItemInt(hDlg, 100, nullptr, FALSE);
+            int v = (int)SendMessageW(hTrack, TBM_GETPOS, 0, 0);
             if (v >= 1 && v <= 20) {
-                *pStep = v;
+                *pStep = v; g_step = v;
                 write_int(L"TransparencyStep", v);
             }
-            EndDialog(hDlg, IDOK);
+            DestroyWindow(hwnd);
         } else if (LOWORD(wp) == IDCANCEL) {
-            EndDialog(hDlg, IDCANCEL);
+            DestroyWindow(hwnd);
         }
-        return TRUE;
+        return 0;
+    case WM_DESTROY:
+        hTrack = nullptr; hLabel = nullptr;
+        return 0;
     }
-    return FALSE;
+    return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
 void show_settings(HINSTANCE hInst) {
-    DialogBoxParamW(hInst, MAKEINTRESOURCEW(200), g_hwnd, SettingsDlg, (LPARAM)&g_step);
+    const wchar_t* CN = L"win2distSettings";
+    WNDCLASSW wc = {};
+    wc.lpfnWndProc = SettingsWndProc;
+    wc.hInstance = hInst;
+    wc.lpszClassName = CN;
+    wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    if (!GetClassInfoW(hInst, CN, &wc))
+        RegisterClassW(&wc);
+
+    HWND hwnd = CreateWindowExW(WS_EX_DLGMODALFRAME, CN, L"win2dist - Settings",
+        WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
+        CW_USEDEFAULT, CW_USEDEFAULT, 290, 180,
+        nullptr, nullptr, hInst, &g_step);
+
+    // Center on screen
+    RECT rc; GetWindowRect(hwnd, &rc);
+    int sw = GetSystemMetrics(SM_CXSCREEN), sh = GetSystemMetrics(SM_CYSCREEN);
+    int w = rc.right - rc.left, h = rc.bottom - rc.top;
+    SetWindowPos(hwnd, nullptr, (sw-w)/2, (sh-h)/2, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+
+    // Modal message loop
+    MSG msg;
+    while (IsWindow(hwnd) && GetMessageW(&msg, nullptr, 0, 0)) {
+        if (!IsDialogMessageW(hwnd, &msg)) {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+    }
 }
 
 // ==================== Tray menu ====================

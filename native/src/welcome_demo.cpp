@@ -77,14 +77,14 @@ void apply_effect(HWND hwnd, int idx) {
         }
     }
 
-    int alpha = (idx == 0) ? 255 : (idx == 2 ? 200 : 243);
+    int alpha = (idx == 0) ? 255 : (idx == 2 ? 200 : 217);  // native / acrylic / 85%
     SetLayeredWindowAttributes(hwnd, 0, (BYTE)alpha, LWA_ALPHA);
 }
 
 const wchar_t* effect_label(int idx) {
     switch (idx) {
         case 0: return L"Native  (100% opaque)";
-        case 1: return L"Transparent  (~95%)";
+        case 1: return L"Transparent  (~85%)";
         case 2: return L"Acrylic Blur  (2% black)";
         default: return L"";
     }
