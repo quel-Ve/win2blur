@@ -123,7 +123,7 @@ Expected: 编译通过，无警告新增。
 
 - [ ] **Step 5: 运行验证首启预置**
 
-Run: 从 build5 运行 win2dist.exe，退出（Keep & Exit），检查 exe 旁 config.ini
+Run: 从 build5 运行 win2blur.exe，退出（Keep & Exit），检查 exe 旁 config.ini
 Expected: `[AutoFrost]` 节含 Enabled=1、DefaultAlpha=217、DefaultBlur=1、App_0..App_7 八个预置项（explorer.exe 带 `|CabinetWClass`）。
 
 - [ ] **Step 6: Commit**
@@ -277,7 +277,7 @@ void save_session(bool clear) {
 
 - [ ] **Step 9: 构建 + 回归验证**
 
-Run: `cd native/build5 && cmake --build .`，运行 win2dist.exe
+Run: `cd native/build5 && cmake --build .`，运行 win2blur.exe
 Expected: 编译通过。热键 ALT+←/→/↑/↓ 全部照常工作；Restore & Exit 与 Keep & Exit 正常；无崩溃、无死锁（Keep & Exit 后重启能恢复会话）。
 
 - [ ] **Step 10: Commit**
@@ -396,7 +396,7 @@ DWORD WINAPI autofrost_thread(LPVOID) {
 - [ ] **Step 5: 全链路验证（30s 正式值）**
 
 Run: 恢复 30000 后构建运行，逐项检查：
-1. 启动 win2dist → 打开 Obsidian → ≤30s 自动 85% + 模糊
+1. 启动 win2blur → 打开 Obsidian → ≤30s 自动 85% + 模糊
 2. ALT+↑ 手动调回 100% → 下一轮不被抢回（窗口在 g_modified 中）
 3. 关闭 Obsidian 重开 → 新窗口再次自动应用
 4. 打开文件资源管理器 → 自动应用；任务栏/桌面**无**变化（CabinetWClass 类名过滤）
@@ -511,7 +511,7 @@ void refill_app_list(HWND hList, AutoFrostConfig* p) {
 
 - [ ] **Step 7: 构建 + 手测**
 
-Run: `cd native/build5 && cmake --build .`，运行 win2dist.exe → 托盘 Settings
+Run: `cd native/build5 && cmake --build .`，运行 win2blur.exe → 托盘 Settings
 Expected:
 1. 新控件出现（Candara 字体生效），Enable 默认勾选、滑块显示 85%、列表显示 8 项（explorer.exe 带 (CabinetWClass)）
 2. 激活记事本 → 打开 Settings → Add current → 列表出现 notepad.exe → Apply → 打开记事本另一实例 → ≤30s 自动应用
@@ -534,7 +534,7 @@ git commit -m "feat: autofrost settings UI (enable/alpha/blur/app list)"
 **Files:**
 - Modify: `README.md`（Features 加 Auto-frost、Tray Menu 说明、Roadmap 勾选）
 - Modify: `local/CLAUDE.md`（快捷键表加说明、架构树注释 v2.7）
-- Create: `dist_release_2.7/`（5 文件：win2dist.exe + injector.exe + libfrosted_dwm.dll + acrylic_overlay.exe + welcome_demo.exe）
+- Create: `dist_release_2.7/`（5 文件：win2blur.exe + injector.exe + libfrosted_dwm.dll + acrylic_overlay.exe + welcome_demo.exe）
 
 **Interfaces:**
 - Consumes: 全部 Task 1–4 产物
@@ -549,7 +549,7 @@ Expected: 全部通过，无崩溃。
 Run:
 ```bash
 mkdir -p dist_release_2.7
-cp native/build5/win2dist.exe dist_release_2.7/
+cp native/build5/win2blur.exe dist_release_2.7/
 cp native/dwm_inject/build/injector.exe dist_release_2.7/
 cp native/dwm_inject/build/libfrosted_dwm.dll dist_release_2.7/
 cp native/build5/acrylic_overlay.exe dist_release_2.7/

@@ -1,4 +1,4 @@
-# win2dist
+# win2blur
 
 Real-time window transparency + Acrylic frosted glass for Windows 10/11.
 
@@ -6,7 +6,7 @@ Zero flicker. Zero external dependencies. Custom blur radius (self-built
 DWM hook, no third-party engine).
 
 <p align="center">
-  <img src="screenshot.png" width="600" alt="win2dist welcome demo">
+  <img src="screenshot.png" width="600" alt="win2blur welcome demo">
 </p>
 
 ## How it Works
@@ -55,13 +55,13 @@ built with MSVC) — no DWMBlurGlass, no third-party dependency.
 - **Windows 10** version 1803 or later (Windows 11 supported)
 - No external dependencies
 
-> Elevation: `install.bat` (run once) registers a logon task, so win2dist starts
+> Elevation: `install.bat` (run once) registers a logon task, so win2blur starts
 > elevated and silent at every logon — zero UAC prompts. Portable copies without
 > the task fall back to a single elevation consent at launch.
 
 ## Download
 
-Get the latest `win2dist.exe` from the [Releases](../../releases) page.
+Get the latest `win2blur.exe` from the [Releases](../../releases) page.
 
 The single `.exe` bundles everything — native C++ tray app, acrylic overlay
 engine, and welcome demo. 493KB, portable.
@@ -76,7 +76,7 @@ mkdir build && cd build
 cmake -G "MinGW Makefiles" ..
 cmake --build .
 
-# Output: build/win2dist.exe (~493KB)
+# Output: build/win2blur.exe (~493KB)
 # Child exes (acrylic_overlay.exe, welcome_demo.exe) are embedded as
 # RCDATA resources and extracted to %TEMP% at runtime.
 ```
@@ -90,13 +90,13 @@ cmake --build .
 │   ├── welcome_demo.cpp      # Startup demo with effect cycling
 │   ├── resource.rc           # Icons + embedded child exes
 │   └── app.ico               # Application icon
-├── win2dist/                 # Python helper modules
+├── win2blur/                 # Python helper modules
 │   ├── diagnose.py           # DWMBlurGlass pipeline diagnostic
 │   ├── blur_controller.py    # Programmatic blur API (reference)
 │   ├── tray_app.py           # Original Python tray app (reference)
 │   ├── frosted_glass.py      # Acrylic overlay launcher (reference)
 │   └── dist/                 # Distribution
-│       ├── win2dist.exe      # Production build (~1.1MB)
+│       ├── win2blur.exe      # Production build (~1.1MB)
 │       ├── readme.md
 │       └── install.bat / uninstall.bat
 ├── README.md
@@ -185,7 +185,7 @@ Thank you to Maplespe and Blinue for their excellent, well-documented code.
 
 **Why not use DWMBlurGlass?**
 DWMBlurGlass is a great project, but we had compatibility issues with
-certain Windows builds. win2dist takes a simpler approach: instead of
+certain Windows builds. win2blur takes a simpler approach: instead of
 injecting into `dwm.exe`, we insert our own acrylic window behind the
 target. Same visual result, zero compatibility headaches.
 
@@ -205,5 +205,5 @@ MIT — see [LICENSE](LICENSE) for details.
 
 ---
 
-*win2dist was originally named "Window2Blur" — renamed to avoid confusion
+*win2blur was originally named "Window2Blur" — renamed to avoid confusion
 with the unrelated open-source project of the same name.*

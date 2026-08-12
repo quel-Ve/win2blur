@@ -30,6 +30,7 @@
 #endif
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <tlhelp32.h>   // watch_parent_exit: 父进程看护
 #include <d3d11.h>
 #include <dxgi1_2.h>
 #include <dwmapi.h>
@@ -407,10 +408,15 @@ static void render_from_cache(){
 }
 
 void tick(){
-    if(!IsWindow(g_target)||!IsWindow(g_overlay))return;
+    // 孤儿蒙版修复 (2026-08-12): 目标被销毁时 IsWindow 为假, 原代码直接 return,
+    // 蒙版永远冻结在目标最后位置 (StickyNotes 启动时的临时 notelist 窗口即触发,
+    // 左上角残留无归属蒙版)。目标销毁或不可见统一走 hide_overlay。
+    // (EVENT_OBJECT_DESTROY 不在 0x8003..0x801C 钩子范围内, 事件分支是死代码,
+    //  此处轮询兜底才是唯一可靠路径。)
+    if(!IsWindow(g_overlay))return;
+    if(!IsWindow(g_target)||!IsWindowVisible(g_target)){ hide_overlay(); return; }
     DWORD pid=0; GetWindowThreadProcessId(g_target,&pid);
     if(pid!=g_targetPid){ wprintf(L"[!] Target HWND recycled, exiting\n"); g_running=false; return; }
-    if(!IsWindowVisible(g_target)){ hide_overlay(); return; }
     show_overlay();
     RECT r=frame(g_target); int w=r.right-r.left,h=r.bottom-r.top;
     if(w<=0||h<=0)return;
@@ -662,6 +668,31 @@ LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
+// 父进程看护 (2026-08-12): 同 acrylic_overlay, 父进程被强杀时叠加层自行退出,
+// 杜绝孤儿蒙版堆积。
+static void watch_parent_exit() {
+    DWORD parent = 0;
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap != INVALID_HANDLE_VALUE) {
+        PROCESSENTRY32W pe = {sizeof(pe)};
+        if (Process32FirstW(snap, &pe)) {
+            do {
+                if (pe.th32ProcessID == GetCurrentProcessId()) {
+                    parent = pe.th32ParentProcessID;
+                    break;
+                }
+            } while (Process32NextW(snap, &pe));
+        }
+        CloseHandle(snap);
+    }
+    if (!parent) return;
+    HANDLE hp = OpenProcess(SYNCHRONIZE, FALSE, parent);
+    if (!hp) return;
+    WaitForSingleObject(hp, INFINITE);
+    CloseHandle(hp);
+    g_running = false;
+}
+
 int main(int argc,char*argv[]){
     if(argc<3){fprintf(stderr,"Usage: crisp_overlay.exe <hwnd_hex> <wash 0-255> [tint 0-100] [radius 1-120] [circle_px] [boost_x100] [band_px] [focus_pct]\n");return 1;}
     g_target=(HWND)(ULONG_PTR)strtoull(argv[1],nullptr,16);
@@ -703,6 +734,9 @@ int main(int argc,char*argv[]){
 
     ShowWindow(g_overlay,SW_SHOWNOACTIVATE);
     tick();  // first capture immediately
+    CreateThread(nullptr, 0, [](LPVOID) -> DWORD {
+        watch_parent_exit(); return 0;
+    }, nullptr, 0, nullptr);
     MSG msg;
     while(g_running){while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){
         if(msg.message==WM_QUIT){g_running=false;break;}

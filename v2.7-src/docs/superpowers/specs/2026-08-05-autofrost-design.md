@@ -78,7 +78,7 @@ App_7=Code.exe|
 - **Default transparency** 滑块 50–100%（`DefaultAlpha` 换算）
 - **Blur** checkbox（`DefaultBlur`）
 - 软件列表 LISTBOX（只读，显示 `exe (class)`）
-- **[+ Add current app]** 按钮：取 `show_settings()` 打开瞬间捕获的 `GetForegroundWindow()`（打开 Settings 前用户激活的软件窗口）→ 其 exe 名入列；空/无效/是 win2dist 自身 → 忽略
+- **[+ Add current app]** 按钮：取 `show_settings()` 打开瞬间捕获的 `GetForegroundWindow()`（打开 Settings 前用户激活的软件窗口）→ 其 exe 名入列；空/无效/是 win2blur 自身 → 忽略
 - **[Remove selected]** 按钮：删除 LISTBOX 选中项
 - Apply（IDOK）写回 `[AutoFrost]` 全节；Close 照旧
 
@@ -106,7 +106,7 @@ Settings Apply → 写 [AutoFrost] → config.ini
 
 手动验证（当前项目无测试框架，沿用热键的手测模式）：
 
-1. 启动 win2dist → 打开 Obsidian → ≤30s 后自动 85% + 模糊
+1. 启动 win2blur → 打开 Obsidian → ≤30s 后自动 85% + 模糊
 2. ALT+↑ 手动调回 100% → 下轮不被抢回
 3. 关闭 Obsidian 重开 → 新窗口再次自动应用
 4. 资源管理器打开 → 自动应用；任务栏/桌面无变化（类名排除）
@@ -116,5 +116,5 @@ Settings Apply → 写 [AutoFrost] → config.ini
 
 ## 构建与发布
 
-- `native/build5/` MinGW 构建 win2dist.exe（无 DLL 变更，DWM hook 不动）
+- `native/build5/` MinGW 构建 win2blur.exe（无 DLL 变更，DWM hook 不动）
 - 打包 `dist_release_2.7/`

@@ -142,7 +142,7 @@ def _stop_overlay(proc: subprocess.Popen | None):
 def _welcome_run(app):
     """Create Win32 window cycling native → transparent → acrylic every 2s."""
     W, H = 420, 420
-    CN = "win2distWelcome"
+    CN = "win2blurWelcome"
     BTN_ID = 1001; TIMER_ID = 1
 
     class PAINTSTRUCT(ctypes.Structure):
@@ -208,7 +208,7 @@ def _welcome_run(app):
             gdi32.SetTextColor(hdc, 0x4FC3F7)
             gdi32.SelectObject(hdc, hfont_title)
             tr = wintypes.RECT(); tr.top=18; tr.bottom=52; tr.left=0; tr.right=w
-            user32.DrawTextW(hdc, "win2dist", -1, ctypes.byref(tr), 0x25)
+            user32.DrawTextW(hdc, "win2blur", -1, ctypes.byref(tr), 0x25)
 
             gdi32.SetTextColor(hdc, 0xA0A0A0)
             gdi32.SelectObject(hdc, hfont_body)
@@ -256,7 +256,7 @@ def _welcome_run(app):
 
     hwnd = user32.CreateWindowExW(
         WS_EX_LAYERED | WS_EX_NOREDIRECTIONBITMAP,
-        CN, "win2dist — Welcome",
+        CN, "win2blur — Welcome",
         WS_OVERLAPPEDWINDOW & ~(0x00020000 | 0x00040000),
         x, y, W, H, 0, 0, hinst, 0)
     if not hwnd: return
@@ -347,7 +347,7 @@ class Window2Clear:
         nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP
         nid.uCallbackMessage = WM_TRAYICON
         nid.hIcon = user32.LoadIconW(0, 32512)  # IDI_APPLICATION
-        nid.szTip = "win2dist"
+        nid.szTip = "win2blur"
         shell32.Shell_NotifyIconW(NIM_ADD, ctypes.byref(nid))
 
     def _remove_tray_icon(self, hwnd):
@@ -636,7 +636,7 @@ class Window2Clear:
         def _dialog():
             import tkinter as tk
             root = tk.Tk()
-            root.title("win2dist")
+            root.title("win2blur")
             root.tk.call('tk', 'scaling', 1.5)
             W, H = 500, 560
             sw = root.winfo_screenwidth()
@@ -648,7 +648,7 @@ class Window2Clear:
             bg_def = "#1e1e1e"; fg_def = "#e0e0e0"; fg2 = "#a0a0a0"; acc = "#4fc3f7"; bg2 = "#2d2d2d"
             root.configure(bg=bg_def)
 
-            tk.Label(root, text="win2dist", font=("Segoe UI", 16, "bold"),
+            tk.Label(root, text="win2blur", font=("Segoe UI", 16, "bold"),
                      fg=acc, bg=bg_def).pack(pady=(18, 0))
             tk.Label(root, text="Transparency + Acrylic Frosted Glass",
                      font=("Segoe UI", 10), fg=fg2, bg=bg_def).pack(pady=(0, 14))
@@ -699,9 +699,9 @@ class Window2Clear:
                 creationflags=subprocess.CREATE_NO_WINDOW)
         else:
             user32.MessageBoxW(0,
-                "win2dist\n\nALT+LEFT/RIGHT  Transparency\nALT+UP  Toggle\n"
+                "win2blur\n\nALT+LEFT/RIGHT  Transparency\nALT+UP  Toggle\n"
                 "ALT+DOWN  Acrylic blur\n\nTray right-click for menu",
-                "win2dist", 0x40)
+                "win2blur", 0x40)
 
     def run(self):
         """Start the app (blocking)."""

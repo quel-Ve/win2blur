@@ -18,6 +18,7 @@
 #endif
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <tlhelp32.h>   // watch_parent_exit: 父进程看护
 #include <dwmapi.h>
 #include <cstdio>
 #include <cstdlib>
@@ -211,6 +212,32 @@ LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
 // ---- Main ----
 
+// 父进程看护 (2026-08-12): 托盘被强杀 (taskkill /f) 时无法执行 WM_DESTROY 的
+// 子进程清理 → 叠加层变孤儿永久残留 (16 个堆积事故的根因)。独立线程等父进程
+// 句柄, 父死即 g_running=false, 叠加层自行退出销毁。
+static void watch_parent_exit() {
+    DWORD parent = 0;
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap != INVALID_HANDLE_VALUE) {
+        PROCESSENTRY32W pe = {sizeof(pe)};
+        if (Process32FirstW(snap, &pe)) {
+            do {
+                if (pe.th32ProcessID == GetCurrentProcessId()) {
+                    parent = pe.th32ParentProcessID;
+                    break;
+                }
+            } while (Process32NextW(snap, &pe));
+        }
+        CloseHandle(snap);
+    }
+    if (!parent) return;
+    HANDLE hp = OpenProcess(SYNCHRONIZE, FALSE, parent);
+    if (!hp) return;
+    WaitForSingleObject(hp, INFINITE);   // 父进程死亡 (含强杀) → 信号
+    CloseHandle(hp);
+    g_running = false;
+}
+
 int main(int argc, char* argv[]) {
     if (argc < 2) {
         fprintf(stderr, "Usage: acrylic_overlay.exe <hwnd_hex> [tint_hex]\n");
@@ -312,6 +339,10 @@ int main(int argc, char* argv[]) {
         EVENT_OBJECT_HIDE, EVENT_OBJECT_UNCLOAKED,
         nullptr, WinEventProc, 0, 0,
         WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+
+    CreateThread(nullptr, 0, [](LPVOID) -> DWORD {
+        watch_parent_exit(); return 0;
+    }, nullptr, 0, nullptr);
 
     // ---- Main loop ----
     MSG msg;

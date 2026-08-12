@@ -37,6 +37,12 @@ add_custom_target(copy_resources ALL
     DEPENDS acrylic_overlay welcome_demo crisp_overlay
     COMMENT "Copying child exes for resource embedding...")
 add_dependencies(win2blur copy_resources)
+# 内嵌依赖修复 (2026-08-12): resource.rc 以相对路径内嵌子 exe, 但 CMake 默认
+# 不知道 RC 依赖这些文件 — 叠加层重链接后 RC 不重编译, win2blur 永远内嵌旧二进制
+# (叠加层尺寸不符/看护代码不生效的根因)。OBJECT_DEPENDS 强制 RC 在 staging
+# 文件变化时重新编译 → win2blur 重链接。
+set_source_files_properties(${CMAKE_SOURCE_DIR}/src/resource.rc PROPERTIES
+    OBJECT_DEPENDS "${CMAKE_SOURCE_DIR}/src/acrylic_overlay.exe;${CMAKE_SOURCE_DIR}/src/welcome_demo.exe;${CMAKE_SOURCE_DIR}/src/crisp_overlay.exe")
 # Pure-logic unit target (no framework; nonzero exit = failure)
 add_executable(profile_test tests/profile_test.cpp src/profile.cpp)
 target_link_libraries(profile_test user32)

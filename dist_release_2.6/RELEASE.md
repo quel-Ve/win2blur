@@ -1,4 +1,4 @@
-# win2dist v2.6 — Zero-Dependency Release
+# win2blur v2.6 — Zero-Dependency Release
 
 **2026-08-05**
 
@@ -9,15 +9,15 @@ This release replaces it with our **self-built MSVC DLL** (`libfrosted_dwm.dll`)
 that hooks DWM's internal blur rendering directly.
 
 ```
-v2.5 (old):  win2dist → DWMBlurGlass config.ini → restart GUI → UAC every time
-v2.6 (new):  win2dist → C:\Temp\frosted_dwm_config.txt → injected DLL reads it → instant
+v2.5 (old):  win2blur → DWMBlurGlass config.ini → restart GUI → UAC every time
+v2.6 (new):  win2blur → C:\Temp\frosted_dwm_config.txt → injected DLL reads it → instant
 ```
 
 ## What's in the box (5 files, ~1.5MB total)
 
 | File | Role |
 |------|------|
-| `win2dist.exe` | Tray app — transparency, acrylic overlay, blur radius slider |
+| `win2blur.exe` | Tray app — transparency, acrylic overlay, blur radius slider |
 | `libfrosted_dwm.dll` | **Self-built** DWM hook — MinHook + hardcoded offsets (MSVC) |
 | `injector.exe` | Injects the DLL into dwm.exe (needs admin, one-time per boot) |
 | `acrylic_overlay.exe` | Acrylic overlay child process |
@@ -31,7 +31,7 @@ v2.6 (new):  win2dist → C:\Temp\frosted_dwm_config.txt → injected DLL reads 
 
 ## How the injection works
 
-1. `win2dist.exe` launches → detects `injector.exe` + `libfrosted_dwm.dll` beside it
+1. `win2blur.exe` launches → detects `injector.exe` + `libfrosted_dwm.dll` beside it
 2. Launches injector (first time: UAC prompt for admin) → injects DLL into dwm.exe
 3. DLL hooks 3 DWM functions (Win10 19045, dwmcore 10.0.19041.320):
    - `CCustomBlur::DetermineOutputScale` → force 1.0 (kill 2.5x prescale)

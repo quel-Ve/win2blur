@@ -1,10 +1,10 @@
-# win2dist
+# win2blur
 
 Window transparency + Acrylic frosted glass. Zero flicker, portable, no admin.
 
 ## Quick start
 
-1. Double-click `win2dist.exe`
+1. Double-click `win2blur.exe`
 2. Click any window, then use the hotkeys:
 
 | Shortcut | Effect |
@@ -18,7 +18,7 @@ Right-click the tray icon for settings and exit options.
 
 ## Start Menu shortcut
 
-Double-click `install.bat` to add win2dist to the Start Menu.
+Double-click `install.bat` to add win2blur to the Start Menu.
 Double-click `uninstall.bat` to remove it.
 
 ## Exit modes
@@ -33,9 +33,9 @@ Double-click `uninstall.bat` to remove it.
 
 ## Uninstall
 
-Delete the `win2dist` folder. If you created a desktop shortcut, run `uninstall.bat` first.
+Delete the `win2blur` folder. If you created a desktop shortcut, run `uninstall.bat` first.
 
 ---
 
-win2dist uses the native Windows DWM compositor to create a zero-flicker
+win2blur uses the native Windows DWM compositor to create a zero-flicker
 acrylic overlay behind your windows — no DLL injection, no system hooks.

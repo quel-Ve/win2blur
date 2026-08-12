@@ -1,4 +1,4 @@
-# win2dist v2.5
+# win2blur v2.5
 
 **2026-07-31**
 
@@ -31,5 +31,5 @@ Subsequent radius changes are instant with no prompts.
 
 ## Files
 
-- `win2dist.exe` — main tray application
+- `win2blur.exe` — main tray application
 - `DWMBlurGlass.2.3.2_Beta3_x64/` — DWMBlurGlass (install once, blur radius via Settings)
