@@ -1,0 +1,3 @@
+#include "resource.h"
+
+IDI_WINDOW2CLEAR ICON "Window2Clear.ico"

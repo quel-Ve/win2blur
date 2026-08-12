@@ -12,11 +12,34 @@ target_link_libraries(blur_backdrop d3d11 dxgi dwmapi user32 gdi32)
 # Acrylic Overlay: zero-flicker DWM-level blur (production)
 add_executable(acrylic_overlay src/acrylic_overlay.cpp)
 target_link_libraries(acrylic_overlay dwmapi user32 gdi32)
+# Crisp Overlay: text-preserving wash (v2.8) — DDA capture + CPU blur
+add_executable(crisp_overlay src/crisp_overlay.cpp)
+target_link_libraries(crisp_overlay d3d11 dxgi dwmapi user32 gdi32)
 # Welcome Demo: effect cycling window (GUI, no console)
 add_executable(welcome_demo src/welcome_demo.cpp)
 target_link_libraries(welcome_demo dwmapi user32 gdi32)
 set_target_properties(welcome_demo PROPERTIES WIN32_EXECUTABLE TRUE)
 # Tray App: native C++ rewrite of tray_app.py (zero Python dependency)
-add_executable(win2dist src/tray_app.cpp src/resource.rc)
-target_link_libraries(win2dist dwmapi user32 shell32 comctl32)
-set_target_properties(win2dist PROPERTIES WIN32_EXECUTABLE TRUE)
+add_executable(win2blur src/tray_app.cpp src/profile.cpp src/resource.rc)
+target_link_libraries(win2blur dwmapi user32 shell32 comctl32)
+set_target_properties(win2blur PROPERTIES WIN32_EXECUTABLE TRUE)
+# Copy built child executables to source dir so resource.rc embeds fresh binaries
+add_custom_target(copy_resources ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:acrylic_overlay>
+        ${CMAKE_SOURCE_DIR}/src/acrylic_overlay.exe
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:welcome_demo>
+        ${CMAKE_SOURCE_DIR}/src/welcome_demo.exe
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:crisp_overlay>
+        ${CMAKE_SOURCE_DIR}/src/crisp_overlay.exe
+    DEPENDS acrylic_overlay welcome_demo crisp_overlay
+    COMMENT "Copying child exes for resource embedding...")
+add_dependencies(win2blur copy_resources)
+# Pure-logic unit target (no framework; nonzero exit = failure)
+add_executable(profile_test tests/profile_test.cpp src/profile.cpp)
+target_link_libraries(profile_test user32)
+if(MINGW)
+    target_link_options(profile_test PRIVATE -municode)  # wmain entry needs wide CRT
+endif()
