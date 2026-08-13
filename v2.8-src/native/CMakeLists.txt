@@ -37,3 +37,8 @@ add_custom_target(copy_resources ALL
     DEPENDS acrylic_overlay welcome_demo crisp_overlay
     COMMENT "Copying child exes for resource embedding...")
 add_dependencies(win2blur copy_resources)
+# OBJECT_DEPENDS: force resource.rc recompile when staged child exes change
+# (backport from v3.0 line — without this, win2blur.exe silently embeds a
+# stale overlay binary after overlay-only edits)
+set_source_files_properties(${CMAKE_SOURCE_DIR}/src/resource.rc PROPERTIES
+    OBJECT_DEPENDS "${CMAKE_SOURCE_DIR}/src/acrylic_overlay.exe;${CMAKE_SOURCE_DIR}/src/welcome_demo.exe;${CMAKE_SOURCE_DIR}/src/crisp_overlay.exe")

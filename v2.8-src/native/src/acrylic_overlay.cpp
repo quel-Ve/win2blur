@@ -136,8 +136,16 @@ void CALLBACK WinEventProc(HWINEVENTHOOK, DWORD event, HWND hwnd,
     } else if (hwnd == g_target) {
         switch (event) {
         case EVENT_OBJECT_DESTROY: g_running = false; break;
-        case EVENT_OBJECT_HIDE:
-        case EVENT_OBJECT_CLOAKED: hide_overlay(); break;
+        case EVENT_OBJECT_HIDE: hide_overlay(); break;
+        case EVENT_OBJECT_CLOAKED:
+            // DWM cloaks BOTH minimized windows and fully-occluded ones.
+            // Only minimize needs the overlay hidden. Hiding on occlusion
+            // cloak is unnecessary (the overlay sits behind the target and
+            // is occluded too) and buys a 1-2 frame accent-surface rebuild
+            // gap on uncloak — the "mask disappears, background shows
+            // through" artifact on cover/uncover.
+            if (IsIconic(g_target)) hide_overlay();
+            break;
         case EVENT_OBJECT_SHOW:
         case EVENT_OBJECT_UNCLOAKED:
             if (IsWindow(g_target)) show_overlay();
