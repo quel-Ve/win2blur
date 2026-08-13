@@ -99,6 +99,11 @@ bool detect_win11() {
 }
 
 void do_set_window_pos() {
+    // Idempotence guard: if the overlay is already directly below the target,
+    // skip entirely — every SetWindowPos forces DWM to re-composite the
+    // accent surface, whose first frame renders the tint at full strength
+    // (visible "dark pulse"). Zero churn in the common no-drift case.
+    if (GetWindow(g_overlay, GW_HWNDPREV) == g_target) return;
     SetWindowPos(g_overlay, g_target, 0, 0, 0, 0,
         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);  // synchronous
 }
