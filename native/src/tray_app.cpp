@@ -10,6 +10,7 @@
 #include <shellapi.h>
 #include <commctrl.h>
 #include <dwmapi.h>
+#include <tlhelp32.h>   // sweep_orphan_overlays
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -138,10 +139,18 @@ void load_config() {
 }
 
 // ==================== Debug log (evidence gathering) ====================
+// C:\Temp may not exist on a clean machine (it is not a default Windows dir).
+// CreateFileW never creates parent directories, so writes to C:\Temp\* would
+// silently fail (ERROR_PATH_NOT_FOUND) and the blur-radius config + debug log
+// would never reach the injected DLL. Ensure the dir exists before any write.
+static void ensure_temp_dir() {
+    CreateDirectoryW(L"C:\\Temp", nullptr);
+}
 void debug_log(const wchar_t* fmt, ...) {
     static CRITICAL_SECTION lg; static bool lgInit = false;
     if (!lgInit) { InitializeCriticalSection(&lg); lgInit = true; }
     EnterCriticalSection(&lg);
+    ensure_temp_dir();
     HANDLE f = CreateFileW(L"C:\\Temp\\win2blur_debug.log", FILE_APPEND_DATA, FILE_SHARE_READ,
                            nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (f != INVALID_HANDLE_VALUE) {
@@ -158,6 +167,10 @@ void debug_log(const wchar_t* fmt, ...) {
     LeaveCriticalSection(&lg);
 }
 const wchar_t* cls_of(HWND h) { static wchar_t c[64]; GetClassNameW(h, c, 63); return c; }
+
+#ifndef DWMWA_CLOAKED
+#define DWMWA_CLOAKED 14   // DwmGetWindowAttribute: cloak state (Win8+)
+#endif
 
 // ==================== Auto-frost ====================
 struct AutoApp { std::wstring exe, cls; };
@@ -298,7 +311,10 @@ void set_blur_radius(int presetIdx) {
     if (presetIdx >= g_blurPresetCount) presetIdx = g_blurPresetCount - 1;
     g_blurRadius = g_blurPresets[presetIdx];
 
-    // Write config file — DLL in dwm.exe reads it (file IPC avoids ACL issues)
+    // Write config file — DLL in dwm.exe reads it (file IPC avoids ACL issues).
+    // C:\Temp may not exist on clean installs; without it the write silently
+    // fails and the radius slider never reaches the DLL.
+    ensure_temp_dir();
     HANDLE f = CreateFileW(BLUR_CONFIG_FILE, GENERIC_WRITE,
         FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (f != INVALID_HANDLE_VALUE) {
@@ -336,6 +352,7 @@ void save_session(bool clear) {
 }
 struct SessionItem { std::wstring title, cls; int alpha, tint; };
 static std::vector<SessionItem> g_sessionItems;
+static int window_cloaked(HWND hwnd);   // forward decl — defined next to autofrost_match
 void load_session_items() {
     g_sessionItems.clear();
     wchar_t buf[512]; auto cfg = config_path();
@@ -359,6 +376,7 @@ HWND find_window_by_title_class(const wchar_t* title, const wchar_t* cls) {
     EnumWindows([](HWND h, LPARAM lp) -> BOOL {
         auto* c = (Ctx*)lp;
         if (!IsWindowVisible(h)) return TRUE;
+        if (window_cloaked(h)) return TRUE;   // invisible despite WS_VISIBLE
         wchar_t t[256], cl[64];
         GetWindowTextW(h, t, 255); GetClassNameW(h, cl, 63);
         if (wcscmp(t, c->title) == 0 && wcscmp(cl, c->cls) == 0) { c->found = h; return FALSE; }
@@ -431,6 +449,7 @@ int current_alpha(HWND hwnd) {
 
 void launch_overlay(HWND hwnd);  // forward decl — defined in Acrylic Overlay section below
 void kill_overlay(HWND hwnd);   // forward decl — same
+void launch_lyric_overlay(HWND hwnd);  // forward decl — lyric panel (DesktopLyrics)
 unsigned tint_argb();           // forward decl — same
 
 void apply_transparency(HWND hwnd, int alpha) {
@@ -495,7 +514,37 @@ void prune_stale() {
     LeaveCriticalSection(&g_fxLock);
 }
 
+// "hosted:XXX.exe" exe field — UWP frame discriminator. Sticky Notes (and
+// other packaged apps) show their windows as ApplicationFrameWindow owned by
+// ApplicationFrameHost.exe, so an exe-name entry can never match them, while
+// the frame-host process hosts EVERY packaged app (Start menu siblings use
+// CoreWindow, but Settings/Photos/... share ApplicationFrameHost). The
+// reliable identity: each frame contains child windows owned by the actual
+// app process (Sticky Notes frames carry a Windows.UI.Core.AppWindow child
+// of Microsoft.Notes.exe — verified live 2026-08-29).
+static bool frame_hosts_process(HWND hwnd, const wchar_t* proc) {
+    struct Ctx { const wchar_t* proc; bool found; } ctx = {proc, false};
+    EnumChildWindows(hwnd, [](HWND c, LPARAM lp) -> BOOL {
+        auto* p = (Ctx*)lp;
+        DWORD pid = 0;
+        GetWindowThreadProcessId(c, &pid);
+        if (!pid) return TRUE;
+        HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+        if (!h) return TRUE;
+        wchar_t path[1024] = {}; DWORD len = 1024;
+        if (QueryFullProcessImageNameW(h, 0, path, &len)) {
+            wchar_t* base = wcsrchr(path, L'\\');
+            if (base && _wcsicmp(base + 1, p->proc) == 0) p->found = true;
+        }
+        CloseHandle(h);
+        return p->found ? FALSE : TRUE;
+    }, (LPARAM)&ctx);
+    return ctx.found;
+}
+
 bool autofrost_match(const AutoApp& app, HWND hwnd) {
+    if (app.exe.rfind(L"hosted:", 0) == 0)
+        return frame_hosts_process(hwnd, app.exe.c_str() + 7);
     std::wstring exe = exe_name_of(hwnd);
     if (exe.empty()) return false;
     if (_wcsicmp(exe.c_str(), app.exe.c_str()) != 0) return false;
@@ -503,6 +552,18 @@ bool autofrost_match(const AutoApp& app, HWND hwnd) {
     wchar_t cls[64];
     GetClassNameW(hwnd, cls, 63);
     return wcscmp(cls, app.cls.c_str()) == 0;
+}
+
+// DWM cloak state of a window: nonzero when the shell/app hid it while its
+// WS_VISIBLE flag stays set (dismissed UWP views, minimized UWP, suspended
+// apps). IsWindowVisible reports TRUE for those — without this check the
+// monitor frosts INVISIBLE windows (e.g. the Sticky Notes list window that
+// flashes at top-left at startup, then cloaks: the frost overlay is left
+// behind as an ownerless blur patch).
+static int window_cloaked(HWND hwnd) {
+    int cloaked = 0;
+    DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked));
+    return cloaked;
 }
 
 // Reload config only when the file changed (mtime) — cheap check each round, full ini read on change
@@ -523,10 +584,9 @@ void revert_auto_applied(const AutoFrostConfig& cfg) {
     for (HWND h : g_autoApplied) {
         if (!IsWindow(h)) continue;
         if (!cfg.enabled) { toRevert.push_back(h); continue; }
-        std::wstring exe = exe_name_of(h);   // few windows — short lock hold
-        bool matched = false;
+        bool matched = false;                // few windows — short lock hold
         for (auto& app : cfg.apps)
-            if (_wcsicmp(exe.c_str(), app.exe.c_str()) == 0) { matched = true; break; }
+            if (autofrost_match(app, h)) { matched = true; break; }
         if (!matched) toRevert.push_back(h);
     }
     for (HWND h : toRevert) { g_autoApplied.erase(h); g_modified.erase(h); }
@@ -551,10 +611,40 @@ DWORD WINAPI autofrost_thread(LPVOID) {
         if (!cfg.enabled) continue;
         EnumWindows([](HWND h, LPARAM lp) -> BOOL {
             if (g_shuttingDown) return FALSE;
+            auto* cfg = (AutoFrostConfig*)lp;
+            // Cloaked windows (UWP views hidden by the shell — see
+            // window_cloaked) are invisible despite WS_VISIBLE: never frost
+            // them, neither the lyric panel nor transparency+overlay.
+            if (window_cloaked(h)) return TRUE;
+            // cloudmusic desktop lyrics (tool window): rounded frosted panel
+            // behind the text — NOT the transparency+overlay path. Only when a
+            // config entry has class DesktopLyrics (e.g. cloudmusic.exe|DesktopLyrics).
+            wchar_t cls[64]; GetClassNameW(h, cls, 63);
+            if (wcscmp(cls, L"DesktopLyrics") == 0) {
+                // Hidden lyric window (cloudmusic hides it when lyrics are off):
+                // skip entirely — otherwise prune_stale kills the overlay each
+                // round and we re-spawn one every poll (process churn).
+                if (!IsWindowVisible(h)) return TRUE;
+                for (auto& app : cfg->apps) {
+                    if (app.cls != L"DesktopLyrics") continue;
+                    if (!autofrost_match(app, h)) continue;
+                    EnterCriticalSection(&g_fxLock);
+                    bool done = g_overlays.count(h) != 0 || g_modified.count(h) != 0;
+                    LeaveCriticalSection(&g_fxLock);
+                    if (!done) {
+                        launch_lyric_overlay(h);
+                        EnterCriticalSection(&g_fxLock);
+                        g_autoApplied.insert(h);
+                        LeaveCriticalSection(&g_fxLock);
+                        debug_log(L"lyric_panel hwnd=0x%08X", (unsigned)(ULONG_PTR)h);
+                    }
+                    break;
+                }
+                return TRUE;
+            }
             if (!IsWindowVisible(h)) return TRUE;
             if (GetWindowLongW(h, GWL_EXSTYLE) & WS_EX_TOOLWINDOW) return TRUE;
             if (GetWindowTextLengthW(h) == 0) return TRUE;
-            auto* cfg = (AutoFrostConfig*)lp;
             for (auto& app : cfg->apps) {
                 if (!autofrost_match(app, h)) continue;
                 EnterCriticalSection(&g_fxLock);
@@ -623,6 +713,23 @@ void launch_overlay(HWND hwnd) {
         }
     }
 }
+// Find the overlay window owned by a specific overlay process (multiple
+// overlays can coexist — sticky notes + lyric panel + normal apps — so
+// FindWindow-by-class would grab the WRONG one). Class-filtered: each overlay
+// process also owns a top-level "IME" window that would otherwise match.
+static HWND find_overlay_of(DWORD pid) {
+    struct Ctx { DWORD pid; HWND found; } ctx = {pid, nullptr};
+    EnumWindows([](HWND h, LPARAM lp) -> BOOL {
+        auto* c = (Ctx*)lp;
+        wchar_t cn[64]; GetClassNameW(h, cn, 63);
+        if (wcscmp(cn, L"AcrylicOverlayClass") != 0 && wcscmp(cn, L"CrispOverlayClass") != 0)
+            return TRUE;
+        DWORD wpid = 0; GetWindowThreadProcessId(h, &wpid);
+        if (wpid == c->pid) { c->found = h; return FALSE; }
+        return TRUE;
+    }, (LPARAM)&ctx);
+    return ctx.found;
+}
 void kill_overlay(HWND hwnd) {
     EnterCriticalSection(&g_fxLock);
     auto it = g_overlays.find(hwnd);
@@ -630,13 +737,46 @@ void kill_overlay(HWND hwnd) {
     PROCESS_INFORMATION pi = it->second;
     g_overlays.erase(it);
     LeaveCriticalSection(&g_fxLock);
-    HWND ov = FindWindowW(L"AcrylicOverlayClass", nullptr);
-    if (!ov) ov = FindWindowW(L"CrispOverlayClass", nullptr);
+    HWND ov = find_overlay_of(pi.dwProcessId);
     if (ov) { PostMessageW(ov, WM_CLOSE, 0, 0); DWORD w = WaitForSingleObject(pi.hProcess, 500);
         if (w == WAIT_OBJECT_0) { CloseHandle(pi.hProcess); CloseHandle(pi.hThread); return; }
         DestroyWindow(ov); }
     TerminateProcess(pi.hProcess, 0);
     CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
+}
+
+// Lyric panel (cloudmusic DesktopLyrics): rounded frosted panel hugging the
+// text, via acrylic_overlay --lyric. Tracked in g_overlays like normal, so
+// prune_stale/revert/kill all work unchanged.
+// User spec: frost only a ~2px band around the text, softly rounded.
+#define LYRIC_CORNER_RADIUS 6
+#define LYRIC_PADDING 2
+void launch_lyric_overlay(HWND hwnd) {
+    wchar_t cmd[1024];
+    EnterCriticalSection(&g_fxLock);
+    bool dup = g_overlays.count(hwnd) != 0;
+    LeaveCriticalSection(&g_fxLock);
+    if (dup) return;
+    if (g_overlayPath.empty()) g_overlayPath = extract_resource(101, L"acrylic_overlay.exe");
+    // 0x30000000 = ~19% black — a clearly-visible frost (normal path floors at 0x1A).
+    wsprintfW(cmd, L"\"%s\" --lyric 0x%08X 0x30000000 %d %d", g_overlayPath.c_str(),
+              (DWORD)(ULONG_PTR)hwnd, LYRIC_CORNER_RADIUS, LYRIC_PADDING);
+    STARTUPINFOW si = {sizeof(si)}; si.dwFlags = STARTF_USESHOWWINDOW; si.wShowWindow = SW_HIDE;
+    PROCESS_INFORMATION pi = {};
+    if (CreateProcessW(nullptr, cmd, nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+        DWORD pid = 0; GetWindowThreadProcessId(hwnd, &pid);
+        EnterCriticalSection(&g_fxLock);
+        auto it = g_overlays.find(hwnd);
+        if (it != g_overlays.end()) {
+            LeaveCriticalSection(&g_fxLock);
+            TerminateProcess(pi.hProcess, 0);   // 并发启动者先到 — 杀自己刚建的
+            CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
+        } else {
+            g_overlays[hwnd] = pi;
+            g_winPid[hwnd] = pid;               // record PID for recycling guard
+            LeaveCriticalSection(&g_fxLock);
+        }
+    }
 }
 void toggle_acrylic(HWND hwnd) {
     EnterCriticalSection(&g_fxLock);
@@ -699,8 +839,17 @@ LRESULT CALLBACK ll_kb_proc(int code, WPARAM w, LPARAM lp) {
             else if (k.vkCode == VK_DOWN) id = ID_ACRYLIC;
             if (id && (g_laltDown || g_raltDown)) {
                 g_swallowVk = (int)k.vkCode;
-                if (g_raltDown) apply_hotkey_batch(id);
-                else apply_hotkey(GetForegroundWindow(), id);
+                bool ralt = g_raltDown;
+                HWND fg = GetForegroundWindow();
+                // 日志留痕：热键改了哪个窗口。没有这行，"窗口效果自己没了"
+                // 只能靠猜 —— 2026-09-23 Cherry Studio 停在 alpha=255（=透明被
+                // 推到 100%，效果不可见）就是这么查出来的：只有 left-Alt 的
+                // 前台窗口路径能造出"LAYERED 还在、alpha=255"这个组合。
+                debug_log(L"hotkey id=%d ralt=%d fg=0x%08X exe=%s", id, ralt ? 1 : 0,
+                          (unsigned)(ULONG_PTR)fg,
+                          fg ? exe_name_of(fg).c_str() : L"<null>");
+                if (ralt) apply_hotkey_batch(id);
+                else apply_hotkey(fg, id);
                 return 1;   // swallow
             }
         } else if (w == WM_KEYUP || w == WM_SYSKEYUP) {
@@ -994,6 +1143,40 @@ void shutdown(bool restore) {
 }
 
 // ==================== WinMain ====================
+// 启动孤儿清扫 (2026-08-27): 强杀托盘 (taskkill /f) 会让其 acrylic_overlay.exe
+// 子进程变孤儿永久残留 (16 进程堆积事故的根因)。新托盘是提权的, 启动时清理
+// 那些父进程已不是活 win2blur 的叠加层。未来由叠加层自身 watch_parent_exit
+// 预防, 这里清历史遗留积压。
+void sweep_orphan_overlays() {
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) return;
+    PROCESSENTRY32W pe = {sizeof(pe)};
+    std::vector<DWORD> dead;
+    if (Process32FirstW(snap, &pe)) {
+        do {
+            if (_wcsicmp(pe.szExeFile, L"acrylic_overlay.exe") != 0) continue;
+            bool parentOk = false;
+            HANDLE s2 = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            if (s2 != INVALID_HANDLE_VALUE) {
+                PROCESSENTRY32W pe2 = {sizeof(pe2)};
+                if (Process32FirstW(s2, &pe2)) {
+                    do {
+                        if (pe2.th32ProcessID == pe.th32ParentProcessID &&
+                            _wcsicmp(pe2.szExeFile, L"win2blur.exe") == 0) { parentOk = true; break; }
+                    } while (Process32NextW(s2, &pe2));
+                }
+                CloseHandle(s2);
+            }
+            if (!parentOk) dead.push_back(pe.th32ProcessID);
+        } while (Process32NextW(snap, &pe));
+    }
+    CloseHandle(snap);
+    for (DWORD pid : dead) {
+        HANDLE hp = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+        if (hp) { TerminateProcess(hp, 0); CloseHandle(hp); }
+    }
+}
+
 void add_tray_icon(HWND hwnd) {
     g_nid.cbSize = sizeof(NOTIFYICONDATAW); g_nid.hWnd = hwnd; g_nid.uID = 1;
     g_nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP; g_nid.uCallbackMessage = WM_TRAYICON;
@@ -1048,10 +1231,16 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE, LPSTR, int) {
     g_hIcon = LoadIconW(hInst, L"APP_ICON");
     load_config();
     load_autofrost();
+    sweep_orphan_overlays();   // 清理前代强杀遗留的孤儿叠加层
     detect_self_dll();
     WNDCLASSW wc = {}; wc.lpfnWndProc = WndProc; wc.hInstance = hInst; wc.lpszClassName = L"win2blurTray";
     if (!RegisterClassW(&wc)) return 1;
-    g_hwnd = CreateWindowExW(0, wc.lpszClassName, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, hInst, nullptr);
+    // 顶层隐藏窗口（非 HWND_MESSAGE）：TaskbarCreated 经 HWND_BROADCAST 只广播到
+    // 顶层窗口，消息专用窗口 "does not receive broadcast messages" → explorer 重启后
+    // g_wmTaskbarCreated 分支从未触发，托盘图标消失 (2026-08-25 修复)。
+    // WS_EX_TOOLWINDOW：隐藏窗口不进任务栏/Alt-Tab；无父窗口 + 无 WS_VISIBLE。
+    g_hwnd = CreateWindowExW(WS_EX_TOOLWINDOW, wc.lpszClassName, L"", 0,
+                             0, 0, 0, 0, nullptr, nullptr, hInst, nullptr);
     if (!g_hwnd) return 1;
     MSG msg; while (GetMessageW(&msg, nullptr, 0, 0)) { TranslateMessage(&msg); DispatchMessageW(&msg); }
     return 0;

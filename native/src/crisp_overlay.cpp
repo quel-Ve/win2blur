@@ -271,6 +271,9 @@ LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_NCHITTEST:
         // Click-through is MANDATORY here: overlay sits ABOVE the target,
         // so all mouse input must pass through to the window underneath.
+        // WS_EX_TRANSPARENT (set at creation) is the load-bearing half —
+        // HTTRANSPARENT is documented to hand the hit to windows "in the
+        // same thread" only, and the target is always another process.
         return HTTRANSPARENT;
     case WM_CLOSE:
         g_running = false;
@@ -293,7 +296,7 @@ int main(int argc,char*argv[]){
     WNDCLASSW wc={};wc.lpfnWndProc=OverlayWndProc;
     wc.hInstance=GetModuleHandle(nullptr);wc.lpszClassName=CN;
     RegisterClassW(&wc);
-    g_overlay=CreateWindowExW(WS_EX_LAYERED|WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE,
+    g_overlay=CreateWindowExW(WS_EX_LAYERED|WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE|WS_EX_TRANSPARENT,
         CN,L"CrispOverlay",WS_POPUP,0,0,100,100,nullptr,nullptr,GetModuleHandle(nullptr),nullptr);
     if(!g_overlay){fprintf(stderr,"[x] Failed to create overlay (err=%lu)\n",GetLastError());return 1;}
 
